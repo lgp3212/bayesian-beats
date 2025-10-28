@@ -1,78 +1,104 @@
-s.reboot;
 s.boot;
 
-// Drone synth with evolving parameters
+OSCdef.freeAll;
+
+// Define the height synth
 (
-SynthDef(\bayesianDrone, { |freq=440, amp=0.3, brightness=1000, uncertainty=0.5, gate=1|
-    var sig, env, filter_freq;
-
-    env = EnvGen.kr(Env.asr(0.3, 1, 1), gate, doneAction: 2);
-
-    // Multiple oscillators for richness
-    sig = Mix([
-        SinOsc.ar(freq),
-        SinOsc.ar(freq * 1.005),      // Slight detune
-        SinOsc.ar(freq * 0.5) * 0.5,   // Sub-octave
-        Saw.ar(freq * 2) * 0.2         // Harmonic
-    ]);
-
-    // Filter brightness based on confidence
-    filter_freq = Lag.kr(brightness, 0.5);  // Smooth transitions
-    sig = LPF.ar(sig, filter_freq);
-
-    // Add uncertainty as noise/vibrato
-    sig = sig + (PinkNoise.ar(uncertainty * 0.1));
-    sig = sig * (1 + (SinOsc.kr(uncertainty * 8) * uncertainty * 0.1));  // Vibrato
-
-    sig = sig * env * amp * 0.2;
+SynthDef(\heightTone, { |freq=220, amp=0.3, gate=1|
+    var sig, env;
+    env = EnvGen.kr(Env.asr(0.01, 1, 0.1), gate, doneAction: 2);
+    sig = SinOsc.ar(freq);
+    sig = sig * env * amp;
     Out.ar(0, sig ! 2);
 }).add;
 )
 
-// Test the synth
-Synth(\bayesianDrone, [\freq, 440, \brightness, 2000, \uncertainty, 0.3]);
+(
+SynthDef(\heightGlitch6, { |freq=440, amp=0.3|
+    var sig, env, mod;
+    env = EnvGen.kr(Env.perc(0.001, 0.1), doneAction: 2);
+
+    // FM synthesis with high modulation index
+    mod = SinOsc.ar(freq * 2.3) * freq * 3;
+    sig = SinOsc.ar(freq + mod);
+
+    // Harsh distortion
+    sig = (sig * 5).tanh;
+
+    sig = sig * env * amp * 0.3;
+    Out.ar(0, sig ! 2);
+}).add;
+)
 
 (
-var drone;
+SynthDef(\aphexBleep, { |freq=440, amp=0.3|
+    var sig, env, click;
 
-OSCdef(\bayesianUpdate, { |msg|
-    var belief, confidence, uncertainty;
-    var freq, brightness, noise_amt;
+    // Super fast attack for that digital click
+    env = EnvGen.kr(Env.perc(0.001, 0.05, curve: -8), doneAction: 2);
 
-    // Parse message from Python
-    belief = msg[1];        // 0-1: estimated probability of heads
-    confidence = msg[2];    // 0-1: how confident we are
-    uncertainty = msg[3];   // 0-1: standard deviation
+    // Layered oscillators with slight FM
+    sig = Mix([
+        SinOsc.ar(freq),
+        SinOsc.ar(freq * 2.01) * 0.4,  // Detuned harmonic
+        Pulse.ar(freq, 0.3) * 0.3,      // Add some edge
+    ]);
 
-    // Map to sonic parameters
-    // Belief -> Pitch (200 Hz for tails-biased, 800 Hz for heads-biased)
-    freq = 200 + (belief * 600);
+    // Add click at the start
+    click = Decay.ar(Impulse.ar(0), 0.001) * PinkNoise.ar(0.4);
+    sig = sig + click;
 
-    // Confidence -> Filter brightness (dull when uncertain, bright when confident)
-    brightness = 500 + (confidence * 3000);
+    // Tight bandpass for that focused bleep quality
+    sig = BPF.ar(sig, freq * 2, 0.5);
 
-    // Uncertainty -> amount of noise/wobble
-    noise_amt = uncertainty * 2;
+    sig = sig * env * amp * 0.6;
+    Out.ar(0, sig ! 2);
+}).add;
+)
 
-    ("Belief: " ++ belief.round(0.001) ++
-     " | Confidence: " ++ confidence.round(0.001) ++
-     " | Uncertainty: " ++ uncertainty.round(0.001)).postln;
+(
+SynthDef(\aphexCrystal, { |freq=440, amp=0.3|
+    var sig, env;
 
-    if(drone.isNil, {
-        drone = Synth(\bayesianDrone, [
-            \freq, freq,
-            \brightness, brightness,
-            \uncertainty, noise_amt
-        ]);
-    }, {
-        drone.set(
-            \freq, freq,
-            \brightness, brightness,
-            \uncertainty, noise_amt
-        );
+    env = EnvGen.kr(Env.perc(0.001, 0.4, curve: -2), doneAction: 2);
+
+    // Multiple slightly detuned sines for shimmer
+    sig = Mix.fill(5, { |i|
+        SinOsc.ar(freq * (1 + (i * 0.003)), Rand(0, 2pi)) * 0.2
     });
 
-}, '/bayesian');
+    // Add inharmonic partials for bell-like quality
+    sig = sig + Mix([
+        SinOsc.ar(freq * 2.13, 0, 0.3),
+        SinOsc.ar(freq * 3.71, 0, 0.2),
+        SinOsc.ar(freq * 5.44, 0, 0.1)
+    ]);
 
-"Bayesian listener active! Press Cmd+. to stop".postln;
+    // Gentle filtering
+    sig = LPF.ar(sig, freq * 6);
+
+    sig = sig * env * amp * 0.3;
+    Out.ar(0, sig ! 2);
+}).add;
 )
+
+(
+OSCdef(\heightListener, { |msg|
+    var height, freq;
+    height = msg[1];
+    freq = msg[2];
+
+    ("Height: " ++ height.round(0.1) ++ " cm → Freq: " ++ freq.round(0.1) ++ " Hz").postln;
+
+    Synth(\aphexClick, [\freq, freq, \amp, 0.3]);  // Using glitch synth!
+
+}, '/height');
+"Glitch listener active!".postln;
+)
+
+Synth(\heightGlitch1, [\freq, 440, \amp, 0.3]);
+
+OSCFunc.trace(true);
+
+n = NetAddr("127.0.0.1", 57120);
+n.sendMsg('/height', 150.0, 600.0);
