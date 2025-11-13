@@ -2,6 +2,7 @@ s.boot;
 
 OSCdef.freeAll;
 
+
 // Define the height synth
 (
 SynthDef(\heightTone, { |freq=220, amp=0.3, gate=1|
@@ -57,7 +58,7 @@ SynthDef(\aphexBleep, { |freq=440, amp=0.3|
 )
 
 (
-SynthDef(\aphexCrystal, { |freq=440, amp=0.3|
+SynthDef(\aphexClick, { |freq=440, amp=0.3|
     var sig, env;
 
     env = EnvGen.kr(Env.perc(0.001, 0.4, curve: -2), doneAction: 2);
@@ -96,9 +97,30 @@ OSCdef(\heightListener, { |msg|
 "Glitch listener active!".postln;
 )
 
-Synth(\heightGlitch1, [\freq, 440, \amp, 0.3]);
+Synth(\aphexCrystal, [\freq, 440, \amp, 0.3]);
+
+
+(
+// First, make sure the synth is running
+~heightSynth = { |freq=440|
+    SinOsc.ar(freq) * 0.2 ! 2
+}.play;
+
+// Set up OSC receiver - fixed the round() syntax
+OSCdef(\heightReceiver, { |msg|
+    var height = msg[1];
+    var freq = msg[2];
+    ~heightSynth.set(\freq, freq);
+    ("Received - Height:" + height + "cm, Freq:" + freq + "Hz").postln;
+}, '/height');
+
+"Ready to receive height data".postln;
+)
 
 OSCFunc.trace(true);
+thisProcess.openPorts;
+
+OSCdef(\test, { |msg| ("TEST RECEIVED:" + msg).postln; }, '/test');
 
 n = NetAddr("127.0.0.1", 57120);
 n.sendMsg('/height', 150.0, 600.0);
