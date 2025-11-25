@@ -6,14 +6,15 @@ import cv2
 import mediapipe as mp
 from pythonosc import udp_client
 
+heights = []
 client = udp_client.SimpleUDPClient("127.0.0.1", 57120)
 df = pd.read_csv("NCD_RisC_Lancet_2020_height_child_adolescent_global.csv")
 
 print("interactive height data sonification")
 print(f"dataset loaded: {len(df)} records\n")
 
-# global variable: none = no person, float = detected height
 camera_height = None
+person_was_detected = False  # Track state changes
 
 def height_to_frequency(height_cm, min_height=100, max_height=200):
     normalized = (height_cm - min_height) / (max_height - min_height)
@@ -22,7 +23,7 @@ def height_to_frequency(height_cm, min_height=100, max_height=200):
     return freq
 
 def camera_detection_thread():
-    global camera_height
+    global camera_height, person_was_detected
     print("initializing camera")
 
     mp_pose = mp.solutions.pose
@@ -34,7 +35,6 @@ def camera_detection_thread():
         return
     
     print("camera initialized successfully")
-    person_detected = False
     
     while cap.isOpened():
         ret, frame = cap.read()
@@ -48,25 +48,31 @@ def camera_detection_thread():
             estimated_height = 170 + (0.5 - nose.y) * 200
             camera_height = estimated_height
             
-            if not person_detected:
-                print(f"\nperson detected, locking to height: {estimated_height:.1f} cm\n")
-                person_detected = True
+            if not person_was_detected:
+                print(f"\n🎥 PERSON DETECTED! Locking to height: {estimated_height:.1f} cm")
+                freq = height_to_frequency(estimated_height)
+                # Send start sample message
+                client.send_message("/sample/start", [float(estimated_height), float(freq)])
+                person_was_detected = True
         else:
-            if person_detected:
-                print("\nperson left, resuming random sampling\n")
-                person_detected = False
+            if person_was_detected:
+                print("\n👋 Person left - resuming random sampling")
+                # Send stop sample message
+                client.send_message("/sample/stop", 1)
+                person_was_detected = False
             camera_height = None
     cap.release()
 
 def main_sonification():
+    print("starting sonification... (step in front of camera to lock your height)\n")
     i = 0
     while True:
         if camera_height is not None:
             # locked mode: person detected 
             freq = height_to_frequency(camera_height)
-            print(f"locked: your height = {camera_height:.1f} cm → {freq:.1f} Hz", end='\r')
+            print(f"🔒 LOCKED: your height = {camera_height:.1f} cm → {freq:.1f} Hz", end='\r')
             client.send_message("/height", [float(camera_height), float(freq)])
-            time.sleep(0.05)  # fast updates while locked
+            time.sleep(0.05)  # Slower updates to avoid FIFO overload
             
         else:
             # random mode: no person detected
@@ -84,11 +90,8 @@ def main_sonification():
             i += 1
 
 if __name__ == "__main__":
-    # start camera in background
     camera_thread = threading.Thread(target=camera_detection_thread, daemon=True)
     camera_thread.start()
-    
-    # run main sonification
     try:
         main_sonification()
     except KeyboardInterrupt:
