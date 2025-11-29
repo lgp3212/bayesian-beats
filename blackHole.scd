@@ -1,14 +1,26 @@
-// STEP 1: Clean slate
+// Clean slate
 s.freeAll;
 OSCdef.freeAll;
 
-// STEP 2: Load TWO samples
+s.reboot;
+
+// Load background (always playing)
 (
-~backgroundBuffer = Buffer.read(s, "/Users/lindseypietrewicz/Projects/bayesian-beats/StuyTown_72.wav");  // Always playing
-~personBuffer = Buffer.read(s, "/Users/lindseypietrewicz/Projects/bayesian-beats/6 11 25 just a lil sumn.mp3");  // Person trigger
+~backgroundBuffer = Buffer.read(s, "/Users/lindseypietrewicz/Projects/bayesian-beats/StuyTown_72.wav");
 )
 
-// STEP 3: Define synths (same as before)
+// Load folder of samples for person detection
+(
+// Load all samples 1-40 in randomized order
+~sampleOrder = (1..46).scramble;  // Randomize order
+~personSamples = ~sampleOrder.collect({ |num|
+    Buffer.read(s, "/Users/lindseypietrewicz/Projects/bayesian-beats/" ++ num ++ ".wav");
+});
+
+"loaded" + ~personSamples.size + "person samples in randomized order".postln;
+)
+
+// Define synths
 (
 SynthDef(\aphexClick, { |freq=440, amp=0.3|
     var sig, env;
@@ -26,77 +38,67 @@ SynthDef(\aphexClick, { |freq=440, amp=0.3|
     Out.ar(0, sig ! 2);
 }).add;
 
-SynthDef(\sustainedTone, { |freq=440, amp=0.3|
-    var sig;
-    sig = SinOsc.ar(freq) * amp;
-    Out.ar(0, sig ! 2);
-}).add;
-
-SynthDef(\sampleLoop, { |buf, rate=1, amp=0.5|
-    var sig;
-    sig = PlayBuf.ar(2, buf, BufRateScale.kr(buf) * rate, loop: 1);
-    sig = sig * amp;
+SynthDef(\sampleLoop, { |buf, amp=0.5, gate=1|
+    var sig, env;
+    env = EnvGen.kr(Env.asr(0.1, 1, 0.5), gate, doneAction: 2);
+    sig = PlayBuf.ar(2, buf, BufRateScale.kr(buf), loop: 1);
+    sig = sig * env * amp;
     Out.ar(0, sig);
 }).add;
 )
 
-// STEP 4: Start background sample immediately
+// Start background (always playing)
 (
-~backgroundSample = Synth(\sampleLoop, [\buf, ~backgroundBuffer, \rate, 1, \amp, 0.3]);
-"🎵 Background sample playing continuously".postln;
+~backgroundSample = Synth(\sampleLoop, [\buf, ~backgroundBuffer, \amp, 0.5]);
+"background playing continuously".postln;
 )
 
-// STEP 5: OSC receivers
+// OSC receivers
 (
-~personDetected = false;
+~currentPersonSample = nil;
 
+// Height blips - ALWAYS PLAYING
 OSCdef(\heightReceiver, { |msg|
     var height = msg[1];
     var freq = msg[2];
-
-    if(~personDetected, {
-        // LOCKED MODE: update sustained tone
-        if(~toneSynth.notNil, {
-            ~toneSynth.set(\freq, freq);
-        });
-    }, {
-        // RANDOM MODE: play blips
-        Synth(\aphexClick, [\freq, freq, \amp, 0.3]);
-    });
+    Synth(\aphexClick, [\freq, freq, \amp, 0.3]);
 }, '/height');
+//
+// Switch person sample based on position
+OSCdef(\sampleSelect, { |msg|
+    var sampleIndex = msg[1].asInteger;
+    var newBuffer = ~personSamples[sampleIndex];
+    ("switching to person sample" + sampleIndex).postln;
 
-// Start sustained tone + PERSON sample when detected
-OSCdef(\sampleStart, { |msg|
-    var height = msg[1];
-    var freq = msg[2];
-
-    ("🎵 PERSON DETECTED: Starting sustained tone + person sample").postln;
-    ~personDetected = true;
-
-    // Start sustained tone
-    ~toneSynth = Synth(\sustainedTone, [\freq, freq, \amp, 0.3]);
-
-    // Start PERSON sample (background keeps playing)
-    ~personSample = Synth(\sampleLoop, [\buf, ~personBuffer, \rate, 1, \amp, 0.5]);
-}, '/sample/start');
-
-// Stop sustained tone + person sample when person leaves
-OSCdef(\sampleStop, { |msg|
-    ("🔄 PERSON LEFT: Stopping tone + person sample, background continues").postln;
-    ~personDetected = false;
-
-    // Stop sustained tone
-    if(~toneSynth.notNil, {
-        ~toneSynth.free;
-        ~toneSynth = nil;
+    // Fade out old person sample
+    if(~currentPersonSample.notNil, {
+        ~currentPersonSample.set(\gate, 0);
     });
 
-    // Stop person sample (background keeps playing!)
-    if(~personSample.notNil, {
-        ~personSample.free;
-        ~personSample = nil;
-    });
-}, '/sample/stop');
+    // Start new person sample
+    ~currentPersonSample = Synth(\sampleLoop, [\buf, newBuffer, \amp, 0.8]);
+}, '/sample/select');
 
-"Ready! Background sample looping + blips. Person detection adds tone + second sample.".postln;
+// Person enters - reshuffle samples
+OSCdef(\personEnter, {
+    "person entered - reshuffling samples!".postln;
+
+    // Reshuffle on each new person
+    ~sampleOrder = (1..46).scramble;
+    ~personSamples = ~sampleOrder.collect({ |num|
+        Buffer.read(s, "/Users/lindseypietrewicz/Projects/bayesian-beats/" ++ num ++ ".wav");
+    });
+}, '/person/enter');
+
+// Person exits - stop person sample
+OSCdef(\personExit, {
+    "person left - stopping person sample".postln;
+
+    if(~currentPersonSample.notNil, {
+        ~currentPersonSample.set(\gate, 0);
+        ~currentPersonSample = nil;
+    });
+}, '/person/exit');
+
+"ready! background + blips always playing, person samples trigger on detection.".postln;
 )
