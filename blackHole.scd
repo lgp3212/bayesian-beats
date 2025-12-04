@@ -14,7 +14,7 @@ s.reboot;
 // Load all samples 1-40 in randomized order
 ~sampleOrder = (1..46).scramble;  // Randomize order
 ~personSamples = ~sampleOrder.collect({ |num|
-    Buffer.read(s, "/Users/lindseypietrewicz/Projects/bayesian-beats/" ++ num ++ ".wav");
+    Buffer.read(s, "/Users/lindseypietrewicz/Projects/bayesian-beats/" ++ num ++ ".wav"); // beau hampton lank
 });
 
 "loaded" + ~personSamples.size + "person samples in randomized order".postln;
