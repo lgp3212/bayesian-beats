@@ -61,7 +61,7 @@ SynthDef(\sampleLoop, { |buf, amp=0.5, gate=1|
 OSCdef(\heightReceiver, { |msg|
     var height = msg[1];
     var freq = msg[2];
-    Synth(\aphexClick, [\freq, freq, \amp, 0.3]);
+    Synth(\aphexClick, [\freq, freq, \amp, 0.4]);
 }, '/height');
 //
 // Switch person sample based on position
@@ -76,7 +76,7 @@ OSCdef(\sampleSelect, { |msg|
     });
 
     // Start new person sample
-    ~currentPersonSample = Synth(\sampleLoop, [\buf, newBuffer, \amp, 0.8]);
+    ~currentPersonSample = Synth(\sampleLoop, [\buf, newBuffer, \amp, 0.7]);
 }, '/sample/select');
 
 // Person enters - reshuffle samples

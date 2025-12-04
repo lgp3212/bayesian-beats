@@ -37,8 +37,8 @@ def camera_detection_thread():
     
     current_sample = -1
     
-    NUM_SAMPLES = 46  # Change to match your sample count
-    MIN_HEIGHT = 115
+    NUM_SAMPLES = 46  
+    MIN_HEIGHT = 150
     MAX_HEIGHT = 250
     
     last_height_send = 0  # Track when we last sent height
@@ -61,7 +61,7 @@ def camera_detection_thread():
             sample_index = min(sample_index, NUM_SAMPLES - 1)
             
             if sample_index != current_sample:
-                print(f"\n🎵 Height: {estimated_height:.1f}cm → Sample {sample_index}")
+                print(f"\nheight: {estimated_height:.1f}cm → sample {sample_index}")
                 client.send_message("/sample/select", sample_index)
                 current_sample = sample_index
             
@@ -75,12 +75,12 @@ def camera_detection_thread():
                 last_height_send = current_time
             
             if not person_was_detected:
-                print(f"\n🎥 PERSON DETECTED!")
+                print(f"\nperson detected")
                 client.send_message("/person/enter", 1)
                 person_was_detected = True
         else:
             if person_was_detected:
-                print("\n👋 Person left")
+                print("\nperson left")
                 client.send_message("/person/exit", 1)
                 person_was_detected = False
                 current_sample = -1
@@ -95,7 +95,7 @@ def main_sonification():
     
     while True:
         # First 75: n=1
-        print("\nSampling random heights (n=1)...\n")
+        print("\nsampling random heights (n=1)...\n")
         for i in range(0, 75):
             while camera_height is not None:  # WAIT while person is there
                 time.sleep(0.05)
@@ -104,11 +104,11 @@ def main_sonification():
             sample_se = df[se_col].sample(1).values[0]
             freq = height_to_frequency(sample_height)
             
-            print(f"Sample {i+1}: Height = {sample_height:.1f} cm → Frequency = {freq:.1f} Hz")
+            print(f"sample {i+1}: height = {sample_height:.1f} cm → frequency = {freq:.1f} Hz")
             client.send_message("/height", [float(sample_height), float(freq)])
             time.sleep(sample_se)
         
-        # Next 75: alternate between n=1 and n=2
+        # next 75: alternate between n=1 and n=2 --- NEED TO WRITE FUNCTION TO WRAP THIS CODE IS VERY INEFFICIENT RN
         for i in range(0, 75):
             while camera_height is not None:  # WAIT while person is there
                 time.sleep(0.05)
@@ -117,7 +117,7 @@ def main_sonification():
             sample_height = df[height_column].sample(1).values[0]
             sample_se = df[se_col].sample(1).values[0]
             freq = height_to_frequency(sample_height)
-            print(f"Sample {i+1}: Height = {sample_height:.1f} cm → Frequency = {freq:.1f} Hz")
+            print(f"sample {i+1}: height = {sample_height:.1f} cm → frequency = {freq:.1f} Hz")
             client.send_message("/height", [float(sample_height), float(freq)])
             time.sleep(sample_se)
             
@@ -130,7 +130,7 @@ def main_sonification():
             ses = df[se_col].sample(2).values
             sample_se = np.mean(ses)
             freq = height_to_frequency(sample_height)
-            print(f"Sample {i+1}: Height = {sample_height:.1f} cm → Frequency = {freq:.1f} Hz")
+            print(f"sample {i+1}: height = {sample_height:.1f} cm → frequency = {freq:.1f} Hz")
             client.send_message("/height", [float(sample_height), float(freq)])
             time.sleep(sample_se)
         
@@ -147,7 +147,7 @@ def main_sonification():
                 sample_se = np.mean(ses)
                 freq = height_to_frequency(sample_height)
                 
-                print(f"Sample {k+1}: Height = {sample_height:.1f} cm → Frequency = {freq:.1f} Hz")
+                print(f"sample {k+1}: height = {sample_height:.1f} cm → frequency = {freq:.1f} Hz")
                 client.send_message("/height", [float(sample_height), float(freq)])
                 time.sleep(sample_se)
 
